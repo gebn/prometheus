@@ -46,6 +46,7 @@ const (
 	ec2LabelInstanceState     = ec2Label + "instance_state"
 	ec2LabelInstanceType      = ec2Label + "instance_type"
 	ec2LabelInstanceLifecycle = ec2Label + "instance_lifecycle"
+	ec2LabelIPv6Addresses     = ec2Label + "ipv6_addresses"
 	ec2LabelOwnerID           = ec2Label + "owner_id"
 	ec2LabelPlatform          = ec2Label + "platform"
 	ec2LabelPublicDNS         = ec2Label + "public_dns_name"
@@ -56,7 +57,7 @@ const (
 	ec2LabelSubnetID          = ec2Label + "subnet_id"
 	ec2LabelTag               = ec2Label + "tag_"
 	ec2LabelVPCID             = ec2Label + "vpc_id"
-	subnetSeparator           = ","
+	valueSeparator            = ","
 )
 
 // DefaultSDConfig is the default EC2 SD configuration.
@@ -243,22 +244,32 @@ func (d *Discovery) refresh(ctx context.Context) ([]*targetgroup.Group, error) {
 					labels[ec2LabelVPCID] = model.LabelValue(*inst.VpcId)
 					labels[ec2LabelPrimarySubnetID] = model.LabelValue(*inst.SubnetId)
 
-					// Deduplicate VPC Subnet IDs maintaining the order of the network interfaces returned by EC2.
 					var subnets []string
+					var ipv6Addrs []string
 					subnetsMap := make(map[string]struct{})
 					for _, eni := range inst.NetworkInterfaces {
 						if eni.SubnetId == nil {
 							continue
 						}
+						// Deduplicate subnet IDs while maintaining original order.
 						if _, ok := subnetsMap[*eni.SubnetId]; !ok {
 							subnetsMap[*eni.SubnetId] = struct{}{}
 							subnets = append(subnets, *eni.SubnetId)
 						}
+						for _, ipv6Addr := range eni.Ipv6Addresses {
+							ipv6Addrs = append(ipv6Addrs, *ipv6Addr.Ipv6Address)
+						}
 					}
 					labels[ec2LabelSubnetID] = model.LabelValue(
-						subnetSeparator +
-							strings.Join(subnets, subnetSeparator) +
-							subnetSeparator)
+						valueSeparator +
+							strings.Join(subnets, valueSeparator) +
+							valueSeparator)
+					if len(ipv6Addrs) > 0 {
+						labels[ec2LabelIPv6Addresses] = model.LabelValue(
+							valueSeparator +
+								strings.Join(ipv6Addrs, valueSeparator) +
+								valueSeparator)
+					}
 				}
 
 				for _, t := range inst.Tags {
